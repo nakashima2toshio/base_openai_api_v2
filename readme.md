@@ -267,7 +267,8 @@ data: {"id": "thread_123", "object": "thread", ...}
 ├── code_10_4_assistant_file_search_streaming.py
 ├── code_10_5_assistant_function_calling_unstreaming.py
 ├── code_10_6_assistant_function_calling_streaming.py
-├── code_11_thread.py
+
+
 ├── code_11_threads.py
 ├── code_12_messages.py
 ├── code_13_runs.py
