@@ -30,20 +30,23 @@ def create_embeddings(input_text, model_name):
 データセットから埋め込みを取得する:
 https://cookbook.openai.com/examples/get_embeddings_from_dataset
 """
-def get_embedding(text, model="text-embedding-3-small"):
+def get_embedding(text, model=model_embedding_3_small):
    text = text.replace("\n", " ")
    return client.embeddings.create(input = [text], model=model).data[0].embedding
-
-df['ada_embedding'] = df.combined.apply(lambda x: get_embedding(x, model='text-embedding-3-small'))
-df.to_csv('output/embedded_1k_reviews.csv', index=False)
-
-
 
 def main():
     input_text = "The food was delicious and the waiter..."
     model_name = model_embedding_3_small
     res = create_embeddings(input_text, model_name)
     pprint.pprint(res)
+
+    data = {
+        "combined": ["Sample text 1", "Sample text 2"]  # 実際のデータに置き換える
+    }
+
+    df = pd.DataFrame(data)
+    df['ada_embedding'] = df['combined'].apply(lambda x: get_embedding(x, model=model_embedding_3_small))
+    df.to_csv('./data/embedded_1k_reviews.csv', index=False)
 
 
 if __name__ == "__main__":

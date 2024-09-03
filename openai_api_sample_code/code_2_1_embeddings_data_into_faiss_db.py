@@ -1,99 +1,126 @@
-# 作成データをFaiss-DBに入れローカルで管理・利用できるようにする。
-# data to Faiss-db
+# data to Faiss-db: 作成データをFaiss-DBに入れローカルで管理・利用できるようにする。
 import re
 import openai
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
-# !pip install faiss-cpu
 import faiss
+import os
 
 # OpenAI APIキーを設定
-# openai.api_key = 'your-api-key'
+openai.api_key = "your-api-key-here"
+model_vector = "text-embedding-ada-002"
+
+data_file_txt = '../openai_api_docs_sumup/doc_01_0_chat_completions.txt'
+
 
 def split_into_paragraphs(file_path):
-    with open(file_path, 'r') as file:
-        content = file.read()
+    # ファイルを読み込み、段落とPythonコードブロックに分割する
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
 
-    # Pythonコードブロックを先に抽出し、それ以外の部分(pythonブロックを区切り文字として)を段落に分割
-    python_blocks = re.findall(r'```python.*?```', content, re.DOTALL)
-    non_python_parts = re.split(r'```python.*?```', content, flags=re.DOTALL)
+        python_blocks = re.findall(r'```python.*?```', content, re.DOTALL)
+        non_python_parts = re.split(r'```python.*?```', content, flags=re.DOTALL)
 
-    paragraphs = []
-    # 各非コード部分をさらに段落に分ける
-    for part in non_python_parts:
-        paragraphs.extend(part.strip().split('\n\n'))
-    return paragraphs, python_blocks
+        paragraphs = []
+        for part in non_python_parts:
+            paragraphs.extend([p.strip() for p in part.split('\n\n') if p.strip()])
 
-# ファイルを読み込む
-with open('./text_generation.txt', 'r') as file:
-    content = file.read()
+        return paragraphs, python_blocks
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+        return [], []
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return [], []
 
-# 段落ごとに分割
-paragraphs = re.split(r'\n\s*\n', content)
 
-# コードスニペットを抽出する正規表現
-code_pattern = re.compile(r'```python(.*?)```', re.DOTALL)
+def get_embeddings(texts, model=model_vector):
+    # テキストのリストを受け取り、OpenAI APIを使用してそれぞれのベクトル表現を取得する
+    try:
+        response = openai.Embedding.create(
+            input=texts,
+            model=model
+        )
+        return [item['embedding'] for item in response['data']]
+    except openai.error.OpenAIError as e:
+        print(f"OpenAI API error: {e}")
+        return []
 
-# extract & translate to code to prompt: xxxx, completions: yyyy
-paragraphs = [code_pattern.findall(paragraph) for paragraph in paragraphs]
 
-# 段落とコードスニペットをリストに格納
-chunks = []
-for paragraph in paragraphs:
-    code_matches = code_pattern.findall(paragraph)
-    if code_matches:
-        for code in code_matches:
-            chunks.append(code.strip())
-    else:
-        chunks.append(paragraph.strip())
+def create_faiss_index(embeddings):
+    # 与えられたベクトル表現を使用してFaissインデックスを作成する
+    d = len(embeddings[0])  # ベクトルの次元数
+    index = faiss.IndexFlatL2(d)
+    index.add(np.array(embeddings).astype(np.float32))
+    return index
 
-# 各チャンクをベクトル化する関数
-def get_embedding(text):
-    response = openai.Embedding.create(
-        input=text,
-        model="text-embedding-3-small"
-    )
-    return response['data'][0]['embedding']
 
-# 各チャンクをベクトル化
-chunk_embeddings = []
-for chunk in chunks:
-    embedding = get_embedding(chunk)
-    chunk_embeddings.append(embedding)
+def search_chunk(query, index, df_normalized, k=5):
+    # クエリを受け取り、Faissインデックスを使用して最も類似したk個のチャンクを検索する
+    query_embeddings = get_embeddings([query])
+    if not query_embeddings:
+        print("Failed to generate query embedding.")
+        return []
 
-# ベクトルデータをデータフレームに変換
-df = pd.DataFrame(chunk_embeddings)
-df['chunk'] = chunks
-
-# ベクトルデータの正規化
-normalized_embeddings = normalize(df.drop(columns=['chunk']), axis=1)
-df_normalized = pd.DataFrame(normalized_embeddings)
-df_normalized['chunk'] = df['chunk']
-
-# Faissインデックスを作成
-d = df_normalized.shape[1] - 1  # ベクトルの次元数
-index = faiss.IndexFlatL2(d)
-
-# ベクトルをFaissインデックスに追加
-index.add(np.array(df_normalized.drop(columns=['chunk'])))
-
-# Faissインデックスを保存
-faiss.write_index(index, 'chunk_embeddings.index')
-
-# 結果を確認
-print(df_normalized.head())
-
-# 検索機能の実装例
-def search_chunk(query, k=5):
-    query_embedding = get_embedding(query)
+    query_embedding = query_embeddings[0]
     query_embedding = normalize([query_embedding], axis=1)
     D, I = index.search(np.array(query_embedding).astype(np.float32), k)
     return df_normalized.iloc[I[0]]['chunk'].tolist()
 
-# サンプル検索
-query = "テキスト生成モデルの概要"
-results = search_chunk(query)
-print("検索結果:")
-for result in results:
-    print(result)
+
+def process_data():
+    # テキストデータを読み込み、ベクトル化し、正規化してFaissインデックスを作成する
+    paragraphs, python_blocks = split_into_paragraphs(data_file_txt)
+    chunks = paragraphs + python_blocks
+    if not chunks:
+        print("No data to process. Exiting.")
+        return None, None
+
+    chunk_embeddings = get_embeddings(chunks)
+    if not chunk_embeddings:
+        print("Failed to generate embeddings. Exiting.")
+        return None, None
+
+    df = pd.DataFrame(chunk_embeddings)
+    df['chunk'] = chunks
+
+    normalized_embeddings = normalize(df.drop(columns=['chunk']), axis=1)
+    df_normalized = pd.DataFrame(normalized_embeddings)
+    df_normalized['chunk'] = df['chunk']
+
+    index = create_faiss_index(normalized_embeddings)
+
+    return index, df_normalized
+
+
+def save_data(index, df_normalized):
+    # FaissインデックスとデータフレームをファイルとしてLOCALに保存する
+    index_file = 'chunk_embeddings.index'
+    faiss.write_index(index, index_file)
+    print(f"Faiss index saved to {index_file}")
+
+    csv_file = 'chunk_data.csv'
+    df_normalized.to_csv(csv_file, index=False)
+    print(f"Chunk data saved to {csv_file}")
+
+
+def main():
+    # メイン処理：データの処理、保存、およびサンプル検索を実行する
+    index, df_normalized = process_data()
+    if index is not None and df_normalized is not None:
+        save_data(index, df_normalized)
+        print("Process completed successfully.")
+
+        # サンプル検索
+        query = "テキスト生成モデルの概要とコード例を記述しなさい。"
+        results = search_chunk(query, index, df_normalized)
+        print("検索結果:")
+        for result in results:
+            print(result)
+
+
+if __name__ == '__main__':
+    main()
+
