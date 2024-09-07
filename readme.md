@@ -83,9 +83,20 @@
 
 #### Embedding: 埋込み　・・・　RAGの限定盤的な。
 - code_2_embedding.py　[API]client.embeddings.create(model, input, encoding_format="float")
+  - 入力テキストを表す埋め込みベクトルを作成します。  (1)[API]client.embeddings.create
+    - """                                     (2)[API]client.embeddings.create
+    - データセットから埋め込みを取得する            (3)[API]client.embeddings.create(input = [text], model=model).data[0].embedding
 ### 超重要：ベクターデータをFaiss-DBにローカルに保存、利用する（例）
 - code_2_0_embeddings.py:  （クラウド保存・利用例）data-> embeddings -> to openai-Storage 
 - code_2_embeddings_data_into_faiss_db.py：（ローカル保存・利用例）data-> Vector -> ローカルのFaiss-DBに保存する例
+  - ファイルを読み込み、段落とPythonコードブロックに分割する                       (1)split_into_paragraphs(file_path)
+  - テキストのリストを受け取り、OpenAI APIを使用してそれぞれのベクトル表現を取得する  (2)get_embeddings(texts, model=model_vector)
+  - 与えられたベクトル表現を使用してFaissインデックスを作成する                    (3)create_faiss_index(embeddings)
+  - クエリを受け取り、Faissインデックスを使用して最も類似したk個のチャンクを検索する   (4)search_chunk(query, index, df_normalized, k=5)
+  - テキストデータを読み込み、ベクトル化し、正規化してFaissインデックスを作成する      (5)process_data()
+  - FaissインデックスとデータフレームをファイルとしてLOCALに保存する                (6)save_data(index, df_normalized)
+  - (main処理): 
+  
 #### Fine-tuning: ファインチューニング
 - code_3_fine_tuning.py
   - app_6_1_make_fine_tuning_data_from_paragraph_dict_simple.py

@@ -1,6 +1,6 @@
 # data to Faiss-db: 作成データをFaiss-DBに入れローカルで管理・利用できるようにする。
 import re
-import openai
+from openai import OpenAI
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
@@ -8,13 +8,16 @@ import faiss
 import os
 
 # OpenAI APIキーを設定
-openai.api_key = "your-api-key-here"
-model_vector = "text-embedding-ada-002"
+# openai.api_key = "your-api-key-here"
+# model_vector = "text-embedding-ada-002"
+model_embedding_3_small = "text-embedding-3-small"
+client = OpenAI()
 
 data_file_txt = '../openai_api_docs_sumup/doc_01_0_chat_completions.txt'
 
 
 def split_into_paragraphs(file_path):
+    print('1-splitting file into paragraphs --------')
     # ファイルを読み込み、段落とPythonコードブロックに分割する
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -36,20 +39,27 @@ def split_into_paragraphs(file_path):
         return [], []
 
 
-def get_embeddings(texts, model=model_vector):
+def get_embeddings(texts):
     # テキストのリストを受け取り、OpenAI APIを使用してそれぞれのベクトル表現を取得する
+    print('2-get_embeddings -------')
+    print(texts)  #  = text.replace("\n", " ")
+    emb_list = []
     try:
-        response = openai.Embedding.create(
-            input=texts,
-            model=model
-        )
-        return [item['embedding'] for item in response['data']]
-    except openai.error.OpenAIError as e:
+        for text in texts:
+            response = client.embeddings.create(
+                input=text,
+                model=model_embedding_3_small
+            )
+            emb_list.append(response.data[0].embedding)
+        return emb_list
+    except Exception as e:
+        # client.error.OpenAIError) as e:
         print(f"OpenAI API error: {e}")
         return []
 
 
 def create_faiss_index(embeddings):
+    print('3-create_faiss_index ---------------')
     # 与えられたベクトル表現を使用してFaissインデックスを作成する
     d = len(embeddings[0])  # ベクトルの次元数
     index = faiss.IndexFlatL2(d)
@@ -58,6 +68,7 @@ def create_faiss_index(embeddings):
 
 
 def search_chunk(query, index, df_normalized, k=5):
+    print('4-search_chunk ---------------')
     # クエリを受け取り、Faissインデックスを使用して最も類似したk個のチャンクを検索する
     query_embeddings = get_embeddings([query])
     if not query_embeddings:
@@ -71,6 +82,7 @@ def search_chunk(query, index, df_normalized, k=5):
 
 
 def process_data():
+    print('5-process_data ---------------')
     # テキストデータを読み込み、ベクトル化し、正規化してFaissインデックスを作成する
     paragraphs, python_blocks = split_into_paragraphs(data_file_txt)
     chunks = paragraphs + python_blocks
@@ -96,6 +108,7 @@ def process_data():
 
 
 def save_data(index, df_normalized):
+    print('6-save_data ---------------')
     # FaissインデックスとデータフレームをファイルとしてLOCALに保存する
     index_file = 'chunk_embeddings.index'
     faiss.write_index(index, index_file)
@@ -114,11 +127,21 @@ def main():
         print("Process completed successfully.")
 
         # サンプル検索
-        query = "テキスト生成モデルの概要とコード例を記述しなさい。"
+        # query = "テキスト生成モデルの概要とコード例を記述しなさい。"
+        query = "Provide an overview of the text generation model and code examples."
+        print('question is : ', query)
         results = search_chunk(query, index, df_normalized)
         print("検索結果:")
         for result in results:
             print(result)
+
+def main2():
+    query = "Provide an overview of the text generation model and code examples."
+
+    # results = search_chunk(query, index, df_normalized)
+    # print("検索結果:")
+    # for result in results:
+    #     print(result)
 
 
 if __name__ == '__main__':

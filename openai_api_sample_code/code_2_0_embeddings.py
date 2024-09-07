@@ -8,7 +8,7 @@ model_embedding_3_small = "text-embedding-3-small"
 client = OpenAI()
 
 
-def create_embeddings2(input_text, model_name, encoding_format):
+def create_embeddings2(input_text, model_name, encoding_format="float"):
     # 入力テキストを表す埋め込みベクトルを作成します。
     # (ex.) input="The food was delicious and the waiter..."
     response = client.embeddings.create(
@@ -51,4 +51,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
